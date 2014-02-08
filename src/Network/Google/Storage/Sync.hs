@@ -27,17 +27,17 @@ import Control.Monad (filterM, liftM, when)
 import Crypto.GnuPG (Recipient)
 import Crypto.MD5 (MD5Info, md5Base64, md5Empty)
 import qualified Data.ByteString.Lazy as LBS (ByteString, readFile)
-import qualified Data.Digest.Pure.MD5 as MD5 (md5)
 import Data.List ((\\), sort)
-import Data.Maybe (catMaybes, fromJust, fromMaybe, mapMaybe)
+import Data.Maybe (catMaybes, fromJust, mapMaybe)
 import Data.Time.Clock (UTCTime, addUTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Data.Time.Format (parseTime)
 import Network.Google (AccessToken, ProjectId, toAccessToken)
-import Network.Google.OAuth2 (OAuth2Client(..), OAuth2Tokens(..), refreshTokens, validateTokens)
+import Network.Google.OAuth2 (OAuth2Client(..), OAuth2Tokens(..), refreshTokens)
 import Network.Google.Storage (BucketName, KeyName, MIMEType, StorageAcl, deleteObjectUsingManager, getBucketUsingManager, putObjectUsingManager)
-import Network.Google.Storage.Encrypted (putEncryptedObject, putEncryptedObjectUsingManager)
-import Network.HTTP.Conduit (closeManager, def, newManager)
+import Network.Google.Storage.Encrypted (putEncryptedObjectUsingManager)
+import Network.HTTP.Client (defaultManagerSettings)
+import Network.HTTP.Conduit (closeManager, newManager)
 import System.Directory (doesDirectoryExist, getDirectoryContents)
 import System.FilePath (combine, splitDirectories)
 import System.FilePath.Posix (joinPath)
@@ -45,7 +45,7 @@ import System.IO (hFlush, stdout)
 import System.Locale (defaultTimeLocale)
 import System.PosixCompat.Files (fileSize, getFileStatus, getSymbolicLinkStatus, isSymbolicLink, modificationTime)
 import Text.Regex.Posix ((=~))
-import Text.XML.Light (Element, QName(qName), filterChildrenName, filterChildName, ppTopElement, strContent)
+import Text.XML.Light (Element, QName(qName), filterChildrenName, filterChildName, strContent)
 
 
 -- | A regular expression used for excluding files from synchronization.
@@ -82,7 +82,7 @@ sync projectId acl bucket client tokens directory recipients exclusions md5sums 
     let
       local' = filter (makeExcluder exclusions) local
     print $ length local - length local'
-    manager <- newManager def
+    manager <- newManager defaultManagerSettings
     finally
       (
         sync'
