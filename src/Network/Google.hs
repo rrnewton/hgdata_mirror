@@ -36,8 +36,8 @@ module Network.Google (
 
 
 import qualified Control.Exception as E
-import Control.Concurrent (threadDelay)
-import Control.Monad.Trans.Resource (ResourceT, runResourceT)
+import Control.Monad.Trans.Resource (runResourceT)
+import Data.Default (def)
 import Data.List (intercalate)
 import Data.Maybe (fromJust)
 import Data.ByteString as BS (ByteString)
@@ -46,8 +46,9 @@ import Data.ByteString.Lazy.Char8 as LBS8 (ByteString)
 import Data.ByteString.Lazy.UTF8 (toString)
 import Data.CaseInsensitive as CI (CI(..), mk)
 import Network.HTTP.Base (urlEncode)
-import Network.HTTP.Conduit (Manager, Request(..), RequestBody(..), Response(..), HttpException, 
-                             closeManager, def, httpLbs, newManager, responseBody)
+import Network.HTTP.Client (defaultManagerSettings)
+import Network.HTTP.Conduit (Manager, Request(..), RequestBody(..), Response(..),
+                             closeManager, httpLbs, newManager, responseBody)
 import Text.JSON (JSValue, Result(Ok), decode)
 import Text.XML.Light (Element, parseXMLDoc)
 
@@ -72,7 +73,7 @@ makeRequest ::
   -> (String, String)  -- ^ The Google API name and version.
   -> String            -- ^ The HTTP method.
   -> (String, String)  -- ^ The host and path for the request.
-  -> Request m         -- ^ The HTTP request.
+  -> Request           -- ^ The HTTP request.
 makeRequest accessToken (apiName, apiVersion) method (host, path) =
   -- TODO: In principle, we should UTF-8 encode the bytestrings packed below.
   def {
@@ -95,7 +96,7 @@ makeProjectRequest ::
   -> (String, String)  -- ^ The Google API name and version.
   -> String            -- ^ The HTTP method.
   -> (String, String)  -- ^ The host and path for the request.
-  -> Request m         -- ^ The HTTP request.
+  -> Request           -- ^ The HTTP request.
 makeProjectRequest projectId accessToken api method hostPath =
   appendHeaders
     [
@@ -108,18 +109,18 @@ makeProjectRequest projectId accessToken api method hostPath =
 class DoRequest a where
   -- | Perform a request.
   doRequest ::
-       Request (ResourceT IO)  -- ^ The request.
-    -> IO a                    -- ^ The action returning the result of performing the request.
+       Request  -- ^ The request.
+    -> IO a     -- ^ The action returning the result of performing the request.
   doRequest request =
     do
-      manager <- newManager def
+      manager <- newManager defaultManagerSettings
       E.finally
         (doManagedRequest manager request)
         (closeManager manager)
   doManagedRequest ::
-       Manager                 -- ^ The conduit HTTP manager.
-    -> Request (ResourceT IO)  -- ^ The request.
-    -> IO a                    -- ^ The action returning the result of performing the request.
+       Manager  -- ^ The conduit HTTP manager.
+    -> Request  -- ^ The request.
+    -> IO a     -- ^ The action returning the result of performing the request.
 
 
 instance DoRequest LBS8.ByteString where
@@ -193,8 +194,8 @@ makeHeaderValue = BS8.pack
 -- | Append headers to a request.
 appendHeaders ::
      [(String, String)]  -- ^ The (name\/key, value) pairs for the headers.
-  -> Request m           -- ^ The request.
-  -> Request m           -- ^ The request with the additional headers.
+  -> Request             -- ^ The request.
+  -> Request             -- ^ The request with the additional headers.
 appendHeaders headers request =
   let
     headerize :: (String, String) -> (CI.CI BS8.ByteString, BS8.ByteString)
@@ -208,8 +209,8 @@ appendHeaders headers request =
 -- | Append a body to a request.
 appendBody ::
      LBS8.ByteString  -- ^ The data for the body.
-  -> Request m        -- ^ The request.
-  -> Request m        -- ^ The request with the body appended.
+  -> Request          -- ^ The request.
+  -> Request          -- ^ The request with the body appended.
 appendBody bytes request =
   request {
     requestBody = RequestBodyLBS bytes
@@ -219,8 +220,8 @@ appendBody bytes request =
 -- | Append a query to a request.
 appendQuery ::
      [(String, String)]  -- ^ The query keys and values.
-  -> Request m           -- ^ The request.
-  -> Request m           -- ^ The request with the query appended.
+  -> Request             -- ^ The request.
+  -> Request             -- ^ The request with the query appended.
 appendQuery query request =
   let
     makeParameter :: (String, String) -> String
@@ -235,22 +236,22 @@ appendQuery query request =
       }
 
 
--- | Takes an idempotent IO action that includes a network request.  Catches
--- `HttpException`s and tries a gain a certain number of times.  The second argument
--- is a callback to invoke every time a retry occurs.
--- 
--- Takes a list of *seconds* to wait between retries.  A null list means no retries,
--- an infinite list will retry indefinitely.  The user can choose whatever temporal
--- pattern they desire (e.g. exponential backoff).
---
--- Once the retry list runs out, the last attempt may throw `HttpException`
--- exceptions that escape this function.
-retryIORequest :: IO a -> (HttpException -> IO ()) -> [Double] -> IO a
-retryIORequest req retryHook = loop
-  where
-    loop [] = req
-    loop (delay:tl) = 
-      E.catch req $ \ (exn::HttpException) -> do 
-        retryHook exn
-        threadDelay (round$ delay * 1000 * 1000) -- Microseconds
-        loop tl
+-- -- | Takes an idempotent IO action that includes a network request.  Catches
+-- -- `HttpException`s and tries a gain a certain number of times.  The second argument
+-- -- is a callback to invoke every time a retry occurs.
+-- --
+-- -- Takes a list of *seconds* to wait between retries.  A null list means no retries,
+-- -- an infinite list will retry indefinitely.  The user can choose whatever temporal
+-- -- pattern they desire (e.g. exponential backoff).
+-- --
+-- -- Once the retry list runs out, the last attempt may throw `HttpException`
+-- -- exceptions that escape this function.
+-- retryIORequest :: IO a -> (HttpException -> IO ()) -> [Double] -> IO a
+-- retryIORequest req retryHook = loop
+--   where
+--     loop [] = req
+--     loop (delay:tl) =
+--       E.catch req $ \ (exn::HttpException) -> do
+--         retryHook exn
+--         threadDelay (round$ delay * 1000 * 1000) -- Microseconds
+--         loop tl
